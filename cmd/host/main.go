@@ -3,20 +3,32 @@ package main
 import (
 	"fmt"
 
-	"github.com/RamanSharma100/go-winplugin/compiler"
+	winplugin "github.com/RamanSharma100/go-winplugin"
 )
 
 func main() {
-	file, err := compiler.ParseFile(
-		"./example/main.go",
+	pluginLoader, err := winplugin.NewLoader(
+		"./example",
 	)
+
 	if err != nil {
 		panic(err)
 	}
 
-	functions := compiler.AnalyzeFunctions(file)
+	err = pluginLoader.Build(
+		"plugin.go",
+	)
 
-	for _, fn := range functions {
-		fmt.Println(fn.Name)
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+
+	err = pluginLoader.Call(
+		"plugin",
+		"Execute",
+	)
+	if err != nil {
+		panic(err)
 	}
 }
