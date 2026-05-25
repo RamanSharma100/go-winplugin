@@ -225,7 +225,6 @@ func (l *Loader) Build(
 func (l *Loader) load(
 	artifactName string,
 ) error {
-
 	if l.dll != nil {
 		return nil
 	}
@@ -239,11 +238,11 @@ func (l *Loader) load(
 	artifact := builder.PlatformLibraryName(
 		artifactName,
 	)
-
+	fmt.Println("Workspace:", l.rootDir)
 	dllPath := filepath.Join(
 		l.workspace,
 		"bridge",
-		artifactName,
+		l.rootDir,
 		artifact,
 	)
 
