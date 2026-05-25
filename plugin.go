@@ -16,17 +16,25 @@ import (
 type Loader struct {
 	rootDir     string
 	packageName string
+	workspace   string
 	environment *environment.Environment
 	dll         *loader.DLL
 }
 
-func NewLoader(rootDir string) (*Loader, error) {
+func NewLoader(
+	rootDir string,
+) (*Loader, error) {
+
 	env, err := environment.CheckEnvironment()
+
 	if err != nil {
 		return nil, err
 	}
 
-	err = environment.InstallDependencies(env)
+	err = environment.InstallDependencies(
+		env,
+	)
+
 	if err != nil {
 		return nil, err
 	}
@@ -38,20 +46,31 @@ func NewLoader(rootDir string) (*Loader, error) {
 	}, nil
 }
 
-func (l *Loader) Build(fileName string) error {
+func (l *Loader) Build(
+	fileName string,
+) error {
+
 	source := filepath.Join(
 		l.rootDir,
 		fileName,
 	)
 
-	file, err := compiler.ParseFile(source)
+	file, err := compiler.ParseFile(
+		source,
+	)
+
 	if err != nil {
 		return err
 	}
 
-	functions := compiler.AnalyzeFunctions(file)
+	functions := compiler.AnalyzeFunctions(
+		file,
+	)
 
-	err = compiler.ValidateFunctions(functions)
+	err = compiler.ValidateFunctions(
+		functions,
+	)
+
 	if err != nil {
 		return err
 	}
@@ -60,30 +79,76 @@ func (l *Loader) Build(fileName string) error {
 		l.packageName,
 	)
 
+	l.workspace = workspace
+
+	if err != nil {
+		return err
+	}
+
+	err = EnsureGoMod(
+		workspace,
+		l.packageName,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	pluginDir := filepath.Join(
+		workspace,
+		"plugin",
+	)
+
+	bridgeDir := filepath.Join(
+		workspace,
+		"bridge",
+	)
+
+	err = os.MkdirAll(
+		pluginDir,
+		0755,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	err = os.MkdirAll(
+		bridgeDir,
+		0755,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	err = builder.CopyFile(
+		source,
+		filepath.Join(
+			pluginDir,
+			fileName,
+		),
+	)
+
 	if err != nil {
 		return err
 	}
 
 	wrapper := compiler.GenerateWrapper(
 		l.packageName,
+		file.Name.Name,
+		l.packageName+"/plugin",
 		functions,
 	)
 
-	wrapperPath := filepath.Join(workspace, "wrapper.go")
+	err = os.WriteFile(
+		filepath.Join(
+			bridgeDir,
+			"wrapper.go",
+		),
 
-	err = os.WriteFile(wrapperPath, []byte(wrapper), 0644)
-	if err != nil {
-		return err
-	}
-
-	err = EnsureGoMod(workspace, l.packageName)
-	if err != nil {
-		return err
-	}
-
-	err = builder.CopyDirectory(
-		l.rootDir,
-		workspace,
+		[]byte(wrapper),
+		0644,
 	)
 
 	if err != nil {
@@ -95,17 +160,18 @@ func (l *Loader) Build(fileName string) error {
 		"go.mod",
 	)
 
-	workspaceMod := filepath.Join(
-		workspace,
-		"go.mod",
+	_, err = os.Stat(
+		goMod,
 	)
 
-	_, err = os.Stat(goMod)
-
 	if err == nil {
+
 		err = builder.CopyFile(
 			goMod,
-			workspaceMod,
+			filepath.Join(
+				workspace,
+				"go.mod",
+			),
 		)
 
 		if err != nil {
@@ -118,18 +184,18 @@ func (l *Loader) Build(fileName string) error {
 		"go.sum",
 	)
 
-	workspaceSum := filepath.Join(
-		workspace,
-		"go.sum",
+	_, err = os.Stat(
+		goSum,
 	)
-
-	_, err = os.Stat(goSum)
 
 	if err == nil {
 
 		err = builder.CopyFile(
 			goSum,
-			workspaceSum,
+			filepath.Join(
+				workspace,
+				"go.sum",
+			),
 		)
 
 		if err != nil {
@@ -137,10 +203,18 @@ func (l *Loader) Build(fileName string) error {
 		}
 	}
 
-	err = builder.BuildDLL(
-		workspace,
-		filepath.Join(workspace, builder.PlatformLibraryName(l.packageName)),
+	artifact := builder.PlatformLibraryName(
+		l.packageName,
 	)
+
+	err = builder.BuildDLL(
+		bridgeDir,
+		filepath.Join(
+			l.rootDir,
+			artifact,
+		),
+	)
+
 	if err != nil {
 		return err
 	}
@@ -156,16 +230,43 @@ func (l *Loader) load(
 		return nil
 	}
 
+	if l.workspace == "" {
+		return fmt.Errorf(
+			"workspace not initialized",
+		)
+	}
+
 	artifact := builder.PlatformLibraryName(
 		artifactName,
 	)
 
-	path := filepath.Join(
-		l.rootDir,
+	dllPath := filepath.Join(
+		l.workspace,
+		"bridge",
+		artifactName,
 		artifact,
 	)
 
-	dll, err := loader.Load(path)
+	fmt.Println(
+		"Loading DLL:",
+		dllPath,
+	)
+
+	_, err := os.Stat(
+		dllPath,
+	)
+
+	if err != nil {
+		return fmt.Errorf(
+			"dll not found: %s",
+			dllPath,
+		)
+	}
+
+	dll, err := loader.Load(
+		dllPath,
+	)
+
 	if err != nil {
 		return err
 	}
@@ -179,11 +280,10 @@ func (l *Loader) Call(
 	artifactName string,
 	function string,
 	args ...uintptr,
-) error {
-
+) (uintptr, error) {
 	err := l.load(artifactName)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	symbol := compiler.MangleSymbol(
@@ -191,29 +291,52 @@ func (l *Loader) Call(
 		function,
 	)
 
-	proc := l.dll.Symbol(symbol)
+	proc := l.dll.Symbol(
+		symbol,
+	)
 
-	_, _, err = executor.Call(
+	result, _, err := executor.Call(
 		proc,
 		args...,
 	)
+	if err != nil && err.Error() != "The operation completed successfully." {
+		return 0, err
+	}
 
-	return err
+	return result, nil
 }
 
-func EnsureGoMod(dir string, moduleName string) error {
-	goModPath := filepath.Join(dir, "go.mod")
+func EnsureGoMod(
+	dir string,
+	moduleName string,
+) error {
+	goModPath := filepath.Join(
+		dir,
+		"go.mod",
+	)
 
-	if _, err := os.Stat(goModPath); err == nil {
+	if _, err := os.Stat(
+		goModPath,
+	); err == nil {
 		return nil
 	}
 
-	cmd := exec.Command("go", "mod", "init", moduleName)
+	cmd := exec.Command(
+		"go",
+		"mod",
+		"init",
+		moduleName,
+	)
+
 	cmd.Dir = dir
 
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("go mod init failed: %s, err: %w", string(out), err)
+		return fmt.Errorf(
+			"go mod init failed: %s, err: %w",
+			string(out),
+			err,
+		)
 	}
 
 	return nil

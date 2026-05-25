@@ -24,11 +24,15 @@ func main() {
 		panic(err)
 	}
 
-	err = pluginLoader.Call(
-		"plugin",
+	output, err := pluginLoader.Call(
+		"example",
 		"Execute",
+		uintptr(10),
+		uintptr(20),
 	)
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Println("Output:", output)
 }

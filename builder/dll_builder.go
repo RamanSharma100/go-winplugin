@@ -43,15 +43,12 @@ func BuildDLL(
 		cmd,
 	)
 
-	out, err := cmd.CombinedOutput()
-
-	fmt.Println(
-		string(out),
-	)
-
+	_, err := cmd.CombinedOutput()
 	if err != nil {
 		return err
 	}
+
+	fmt.Println("DLL built successfully at:", output)
 
 	return nil
 }
