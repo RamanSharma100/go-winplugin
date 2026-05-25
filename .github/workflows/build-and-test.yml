@@ -2,13 +2,20 @@ name: Test
 
 on:
   push:
-    branches: ['main']
+    branches:
+      - main
   pull_request:
-    branches: ['main']
+    branches:
+      - main
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: Run Go Tests
+    runs-on: windows-latest
+
+    env:
+      GOOS: windows
+      GOARCH: amd64
 
     steps:
       - name: Checkout repository
@@ -19,8 +26,11 @@ jobs:
         with:
           go-version: '1.26.2'
 
-      - name: Verify Go version
+      - name: Verify Go installation
         run: go version
+
+      - name: Download dependencies
+        run: go mod download
 
       - name: Run tests
         run: go test -v ./...
