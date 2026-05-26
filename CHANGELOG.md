@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.0
+## v0.1.0 - 2026-05-25
 
 ### Added
 
@@ -26,3 +26,28 @@
 - Symbol cache
 - Runtime validation
 - Memory cleanup improvements
+
+---
+
+## v0.1.1 - 2026-05-26
+
+### Added
+
+- Windows CI support via `windows-latest` GitHub Actions runner
+- Explicit Go test workflow separation
+- Environment variable support for `GOOS=windows` and `GOARCH=amd64`
+
+### Changed
+
+- Improved CI pipeline structure (separated build/test jobs conceptually)
+- Updated Go version handling to support `1.26.2`
+
+### Fixed
+
+- Go module version format issues (`go.mod` validation)
+- Call of function from another file in plugin
+- Temporary folder handling improvements (preparation for cleanup support)
+
+### Notes
+
+- This release improves stability for Windows plugin development workflow
