@@ -67,6 +67,23 @@ func AnalyzeFunctions(file *ast.File) []Function {
 	return functions
 }
 
+func AnalyzePackageFunctions(
+	pkg *ast.Package,
+) []Function {
+	functions := []Function{}
+
+	for _, file := range pkg.Files {
+		fileFunctions := AnalyzeFunctions(file)
+
+		functions = append(
+			functions,
+			fileFunctions...,
+		)
+	}
+
+	return functions
+}
+
 func exprToString(e ast.Expr) string {
 	switch v := e.(type) {
 	case *ast.Ident:

@@ -2,6 +2,7 @@ package winplugin
 
 import (
 	"fmt"
+	"go/ast"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,7 +25,6 @@ type Loader struct {
 func NewLoader(
 	rootDir string,
 ) (*Loader, error) {
-
 	env, err := environment.CheckEnvironment()
 
 	if err != nil {
@@ -39,9 +39,21 @@ func NewLoader(
 		return nil, err
 	}
 
+	absRoot, err := filepath.Abs(
+		rootDir,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	tempDir := filepath.Join(os.TempDir(), "go-winplugin")
+
+	defer os.RemoveAll(tempDir)
+
 	return &Loader{
-		rootDir:     rootDir,
-		packageName: filepath.Base(rootDir),
+		rootDir:     absRoot,
+		packageName: filepath.Base(absRoot),
 		environment: env,
 	}, nil
 }
@@ -49,22 +61,30 @@ func NewLoader(
 func (l *Loader) Build(
 	fileName string,
 ) error {
-
-	source := filepath.Join(
+	packages, err := compiler.ParsePackage(
 		l.rootDir,
-		fileName,
-	)
-
-	file, err := compiler.ParseFile(
-		source,
 	)
 
 	if err != nil {
 		return err
 	}
 
-	functions := compiler.AnalyzeFunctions(
-		file,
+	var parsedPackage *ast.Package
+
+	for _, pkg := range packages {
+		parsedPackage = pkg
+		break
+	}
+
+	if parsedPackage == nil {
+		return fmt.Errorf(
+			"no package found in %s",
+			l.rootDir,
+		)
+	}
+
+	functions := compiler.AnalyzePackageFunctions(
+		parsedPackage,
 	)
 
 	err = compiler.ValidateFunctions(
@@ -79,11 +99,11 @@ func (l *Loader) Build(
 		l.packageName,
 	)
 
-	l.workspace = workspace
-
 	if err != nil {
 		return err
 	}
+
+	l.workspace = workspace
 
 	err = EnsureGoMod(
 		workspace,
@@ -122,11 +142,10 @@ func (l *Loader) Build(
 		return err
 	}
 
-	err = builder.CopyFile(
-		source,
+	goFiles, err := filepath.Glob(
 		filepath.Join(
-			pluginDir,
-			fileName,
+			l.rootDir,
+			"*.go",
 		),
 	)
 
@@ -134,19 +153,47 @@ func (l *Loader) Build(
 		return err
 	}
 
+	if len(goFiles) == 0 {
+		return fmt.Errorf(
+			"no go files found in %s",
+			l.rootDir,
+		)
+	}
+
+	for _, goFile := range goFiles {
+		fileBase := filepath.Base(
+			goFile,
+		)
+
+		err = builder.CopyFile(
+			goFile,
+			filepath.Join(
+				pluginDir,
+				fileBase,
+			),
+		)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	packageName := parsedPackage.Name
+
 	wrapper := compiler.GenerateWrapper(
 		l.packageName,
-		file.Name.Name,
+		packageName,
 		l.packageName+"/plugin",
 		functions,
 	)
 
-	err = os.WriteFile(
-		filepath.Join(
-			bridgeDir,
-			"wrapper.go",
-		),
+	wrapperPath := filepath.Join(
+		bridgeDir,
+		"wrapper.go",
+	)
 
+	err = os.WriteFile(
+		wrapperPath,
 		[]byte(wrapper),
 		0644,
 	)
@@ -160,12 +207,9 @@ func (l *Loader) Build(
 		"go.mod",
 	)
 
-	_, err = os.Stat(
+	if _, err := os.Stat(
 		goMod,
-	)
-
-	if err == nil {
-
+	); err == nil {
 		err = builder.CopyFile(
 			goMod,
 			filepath.Join(
@@ -184,12 +228,9 @@ func (l *Loader) Build(
 		"go.sum",
 	)
 
-	_, err = os.Stat(
+	if _, err := os.Stat(
 		goSum,
-	)
-
-	if err == nil {
-
+	); err == nil {
 		err = builder.CopyFile(
 			goSum,
 			filepath.Join(
@@ -207,17 +248,38 @@ func (l *Loader) Build(
 		l.packageName,
 	)
 
+	outputPath := filepath.Join(
+		bridgeDir,
+		artifact,
+	)
+
 	err = builder.BuildDLL(
 		bridgeDir,
-		filepath.Join(
-			l.rootDir,
-			artifact,
-		),
+		outputPath,
 	)
 
 	if err != nil {
 		return err
 	}
+
+	finalOutput := filepath.Join(
+		l.rootDir,
+		artifact,
+	)
+
+	err = builder.CopyFile(
+		outputPath,
+		finalOutput,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(
+		"DLL built successfully at:",
+		finalOutput,
+	)
 
 	return nil
 }
@@ -238,11 +300,10 @@ func (l *Loader) load(
 	artifact := builder.PlatformLibraryName(
 		artifactName,
 	)
-	fmt.Println("Workspace:", l.rootDir)
+
 	dllPath := filepath.Join(
 		l.workspace,
 		"bridge",
-		l.rootDir,
 		artifact,
 	)
 
@@ -280,7 +341,10 @@ func (l *Loader) Call(
 	function string,
 	args ...uintptr,
 ) (uintptr, error) {
-	err := l.load(artifactName)
+	err := l.load(
+		artifactName,
+	)
+
 	if err != nil {
 		return 0, err
 	}
@@ -298,7 +362,9 @@ func (l *Loader) Call(
 		proc,
 		args...,
 	)
-	if err != nil && err.Error() != "The operation completed successfully." {
+
+	if err != nil &&
+		err.Error() != "The operation completed successfully." {
 		return 0, err
 	}
 
@@ -330,6 +396,7 @@ func EnsureGoMod(
 	cmd.Dir = dir
 
 	out, err := cmd.CombinedOutput()
+
 	if err != nil {
 		return fmt.Errorf(
 			"go mod init failed: %s, err: %w",

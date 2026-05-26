@@ -3,7 +3,7 @@ package example
 import "fmt"
 
 func Execute(a, b int) int {
-	return addInternal(a, b)
+	return AddInternal(a, b)
 }
 
 func Version() string {
@@ -12,8 +12,4 @@ func Version() string {
 
 func Logger(message string) {
 	fmt.Println(message)
-}
-
-func addInternal(a, b int) int {
-	return a + b
 }
