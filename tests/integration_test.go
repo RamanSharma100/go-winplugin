@@ -39,4 +39,33 @@ func TestPluginExecution(
 			result,
 		)
 	}
+
+	_, err = loader.Call(
+		"sample_plugin",
+		"Version",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+}
+
+func TestMultiFilePluginBuild(
+	t *testing.T,
+) {
+	loader, err := winplugin.NewLoader(
+		"./fixtures/sample_plugin",
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = loader.Build(
+		"plugin.go",
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
 }
