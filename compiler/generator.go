@@ -186,15 +186,14 @@ func buildCBridge(
 			)
 
 		default:
-
 			cParams = append(
 				cParams,
-				cName+" C.int",
+				cName+" uintptr",
 			)
 
 			goArgs = append(
 				goArgs,
-				"int("+cName+")",
+				"nil",
 			)
 		}
 	}

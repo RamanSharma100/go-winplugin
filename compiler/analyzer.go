@@ -84,10 +84,22 @@ func AnalyzePackageFunctions(
 	return functions
 }
 
-func exprToString(e ast.Expr) string {
+func exprToString(
+	e ast.Expr,
+) string {
 	switch v := e.(type) {
 	case *ast.Ident:
 		return v.Name
+	case *ast.StarExpr:
+		return "*" + exprToString(
+			v.X,
+		)
+	case *ast.StructType:
+		return "struct"
+	case *ast.SelectorExpr:
+		return exprToString(
+			v.X,
+		) + "." + v.Sel.Name
 	default:
 		return "unknown"
 	}

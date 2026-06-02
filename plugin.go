@@ -12,6 +12,7 @@ import (
 	"github.com/RamanSharma100/go-winplugin/environment"
 	"github.com/RamanSharma100/go-winplugin/executor"
 	"github.com/RamanSharma100/go-winplugin/loader"
+	"github.com/RamanSharma100/go-winplugin/sandbox"
 )
 
 type Loader struct {
@@ -86,6 +87,14 @@ func (l *Loader) Build(
 	functions := compiler.AnalyzePackageFunctions(
 		parsedPackage,
 	)
+
+	for _, file := range parsedPackage.Files {
+		err = sandbox.ValidateSandbox(file)
+
+		if err != nil {
+			return err
+		}
+	}
 
 	err = compiler.ValidateFunctions(
 		functions,

@@ -26,10 +26,22 @@ func ValidateFunctions(functions []Function) error {
 
 		for _, p := range fn.Params {
 			switch p.Type {
-			case "int", "string", "float", "bool":
+			case "int",
+				"string",
+				"float",
+				"bool",
+				"struct":
 				continue
 			default:
-				return fmt.Errorf("unsupported parameter type: %s in %s", p.Type, fn.Name)
+				if len(p.Type) > 0 && p.Type[0] == '*' {
+					continue
+				}
+
+				return fmt.Errorf(
+					"unsupported parameter type: %s in %s",
+					p.Type,
+					fn.Name,
+				)
 			}
 		}
 	}

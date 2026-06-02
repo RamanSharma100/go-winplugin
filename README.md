@@ -15,26 +15,70 @@ Go's official `plugin` package does not support Windows, creating major limitati
 - CGO bridge generation
 - Runtime symbol execution
 - AST-based exported function parsing
+- Package-wide function discovery
+- Multi-file plugin support
 - Automatic wrapper generation
 - Automatic GCC/MSYS2 setup
 - Temporary isolated workspaces
+- Plugin sandbox validation
+- Symbol caching
 - Primitive type support
+- Struct type detection
 - Dynamic function execution
 
 ## Supported Types
 
-| Type   | Support |
-| ------ | ------- |
-| int    | Yes     |
-| string | Yes     |
-| bool   | Yes     |
-| float  | Yes     |
-| void   | Yes     |
+| Type     | Support |
+| -------- | ------- |
+| int      | Yes     |
+| string   | Yes     |
+| bool     | Yes     |
+| float    | Yes     |
+| void     | Yes     |
+| struct   | Partial |
+| \*struct | Partial |
+
+### Struct Support
+
+Version 0.2.0 introduces struct parsing and validation support.
+
+Supported:
+
+- Struct type discovery
+- Struct pointer discovery
+- Wrapper generation compatibility
+- Validation support
+
+Not yet supported:
+
+- Struct marshalling across DLL boundaries
+- Automatic struct serialization
+- Interface marshalling
 
 ## How It Works
 
-```
-User Plugin → AST Parser → Wrapper Generator → CGO Bridge → go build -buildmode=c-shared → DLL Generation → Windows DLL Loader → Runtime Symbol Execution
+```text
+User Plugin
+    ↓
+AST Parser
+    ↓
+Package Analyzer
+    ↓
+Sandbox Validator
+    ↓
+Wrapper Generator
+    ↓
+CGO Bridge
+    ↓
+go build -buildmode=c-shared
+    ↓
+DLL Generation
+    ↓
+Windows DLL Loader
+    ↓
+Symbol Cache
+    ↓
+Runtime Symbol Execution
 ```
 
 ## Installation
@@ -45,7 +89,7 @@ go get github.com/RamanSharma100/go-winplugin
 
 ## Quick Start
 
-### Create a plugin
+### Plugin
 
 ```go
 package example
@@ -55,62 +99,115 @@ func Execute(a int, b int) int {
 }
 ```
 
-### Use the plugin
+### Host
 
 ```go
 package main
 
 import (
 	"fmt"
+
 	winplugin "github.com/RamanSharma100/go-winplugin"
 )
 
 func main() {
 	loader, err := winplugin.NewLoader("./example")
+
 	if err != nil {
 		panic(err)
 	}
 
 	err = loader.Build("plugin.go")
+
 	if err != nil {
 		panic(err)
 	}
 
-	result, err := loader.Call("example", "Execute", uintptr(10), uintptr(20))
+	result, err := loader.Call(
+		"example",
+		"Execute",
+		uintptr(10),
+		uintptr(20),
+	)
+
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println(result) // Output: 30
+	fmt.Println(result)
 }
 ```
+
+Output:
+
+```text
+30
+```
+
+## Multi-File Plugin Example
+
+plugin.go
+
+```go
+package example
+
+func Execute(a, b int) int {
+	return AddInternal(a, b)
+}
+```
+
+testing.go
+
+```go
+package example
+
+func AddInternal(a, b int) int {
+	return a + b
+}
+```
+
+The loader automatically analyzes all Go files within the package.
 
 ## Build Process
 
 The library automatically handles:
 
-1. Go source parsing
+1. Package parsing
 2. Exported function detection
-3. CGO wrapper generation
-4. Isolated workspace creation
-5. DLL compilation
-6. Dynamic DLL loading
-7. Symbol resolution
-8. Runtime function execution
+3. Sandbox validation
+4. CGO wrapper generation
+5. Workspace creation
+6. DLL compilation
+7. Dynamic DLL loading
+8. Symbol caching
+9. Runtime function execution
 
 ## Environment Setup
 
 The library automatically:
 
+- Detects Go installation
 - Detects GCC installation
 - Detects MSYS2 installation
 - Validates PATH configuration
 - Installs missing dependencies
 - Prepares the CGO environment
 
+## Security
+
+Version 0.2.0 introduces basic sandbox validation.
+
+Blocked imports:
+
+- os
+- os/exec
+- syscall
+- unsafe
+
+Plugins using blocked imports will fail validation before compilation.
+
 ## Known Limitations
 
-- Struct support not implemented
 - Interface support not implemented
 - String memory cleanup pending
 - Windows-first implementation
@@ -119,15 +216,17 @@ The library automatically:
 
 ## Roadmap
 
-- Struct support
-- Reflection support
-- Plugin sandboxing
-- Hot reload support
-- Symbol cache
-- Linux support
-- macOS support
+### v0.3.0
+
+- Interface support
 - Runtime type validation
-- Automatic memory cleanup
+- Plugin sandboxing improvements
+
+### v0.4.0
+
+- Hot reload support
+- Symbol cache enhancements
+- Cross-platform runtime loaders
 
 ## Testing
 
@@ -135,10 +234,23 @@ The library automatically:
 go test ./...
 ```
 
+Current test coverage includes:
+
+- Symbol mangling
+- Function analysis
+- Package analysis
+- Validation
+- Wrapper generation
+- Sandbox validation
+- Struct parsing
+- Multi-file plugins
+- DLL compilation
+- DLL execution
+
 ## Documentation
 
-- [Contributing](CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
+- Contributing Guide
+- Changelog
 
 ## License
 
@@ -146,4 +258,7 @@ MIT
 
 ## Author
 
-[Raman Sharma](https://github.com/RamanSharma100)
+Raman Sharma
+
+GitHub:
+https://github.com/RamanSharma100
