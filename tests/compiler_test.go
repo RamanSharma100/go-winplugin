@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/RamanSharma100/go-winplugin/compiler"
+	"github.com/RamanSharma100/go-winplugin/sandbox"
 )
 
 func TestMangleSymbol(
@@ -262,5 +263,133 @@ func TestGenerateWrapper_Void(
 				check,
 			)
 		}
+	}
+}
+
+func TestSandboxValidation(
+	t *testing.T,
+) {
+	source := `
+package example
+
+import "os"
+
+func Execute() {}
+`
+
+	set := token.NewFileSet()
+
+	file, err := parser.ParseFile(
+		set,
+		"plugin.go",
+		source,
+		parser.ParseComments,
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = sandbox.ValidateSandbox(
+		file,
+	)
+
+	if err == nil {
+		t.Fatal(
+			"expected sandbox violation",
+		)
+	}
+}
+
+func TestStructParameterAnalysis(
+	t *testing.T,
+) {
+	source := `
+package example
+
+type User struct {
+	Name string
+}
+
+func ProcessUser(
+	user *User,
+) {
+}
+`
+
+	set := token.NewFileSet()
+
+	file, err := parser.ParseFile(
+		set,
+		"plugin.go",
+		source,
+		parser.ParseComments,
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	functions := compiler.AnalyzeFunctions(
+		file,
+	)
+
+	if len(functions) != 1 {
+		t.Fatalf(
+			"expected 1 function got %d",
+			len(functions),
+		)
+	}
+
+	if functions[0].Params[0].Type != "*User" {
+		t.Fatalf(
+			"expected *User got %s",
+			functions[0].Params[0].Type,
+		)
+	}
+}
+
+func TestStructValidation(
+	t *testing.T,
+) {
+	functions := []compiler.Function{
+		{
+			Name:     "ProcessUser",
+			Exported: true,
+			Params: []compiler.Param{
+				{
+					Name: "user",
+					Type: "*User",
+				},
+			},
+		},
+	}
+
+	err := compiler.ValidateFunctions(
+		functions,
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMangleSymbolConsistency(
+	t *testing.T,
+) {
+	first := compiler.MangleSymbol(
+		"example",
+		"Execute",
+	)
+
+	second := compiler.MangleSymbol(
+		"example",
+		"Execute",
+	)
+
+	if first != second {
+		t.Fatal(
+			"symbol generation not deterministic",
+		)
 	}
 }

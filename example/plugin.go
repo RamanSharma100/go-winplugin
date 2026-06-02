@@ -2,6 +2,11 @@ package example
 
 import "fmt"
 
+type User struct {
+	Name string
+	Age  int
+}
+
 func Execute(a, b int) int {
 	return AddInternal(a, b)
 }
@@ -12,4 +17,14 @@ func Version() string {
 
 func Logger(message string) {
 	fmt.Println(message)
+}
+
+func ProcessUser(
+	user *User,
+) {
+	fmt.Println(
+		"User:",
+		user.Name,
+		user.Age,
+	)
 }

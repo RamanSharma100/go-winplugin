@@ -10,6 +10,7 @@ const ucrtPath = `C:\msys64\ucrt64\bin`
 
 type DLL struct {
 	Handle *syscall.LazyDLL
+	cache  map[string]*syscall.LazyProc
 }
 
 func Load(
@@ -50,5 +51,6 @@ func Load(
 
 	return &DLL{
 		Handle: dll,
+		cache:  make(map[string]*syscall.LazyProc),
 	}, nil
 }

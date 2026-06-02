@@ -1,31 +1,68 @@
 # Changelog
 
-## v0.1.0 - 2026-05-25
+## v0.2.0 - 2026-06-02
 
 ### Added
 
-- Windows runtime plugin system
-- Dynamic DLL loading
-- CGO wrapper generation
-- Runtime symbol execution
-- AST function parsing
-- Automatic wrapper generation
-- Automatic MSYS2 setup
-- Automatic GCC detection
-- PATH validation
-- Temporary isolated workspaces
-- Primitive type support
-- Integration testing
+- Multi-file plugin support
+- Package-wide function analysis
+- Struct type detection
+- Struct pointer detection
+- Plugin sandbox validation
+- Symbol caching
+- Package parser improvements
+- Sandbox security checks for dangerous imports
+- Additional compiler test coverage
+- Additional integration test coverage
 
-## Planned
+### Changed
 
-- Struct support
-- Reflection support
-- Hot reload
-- Linux/macOS support
-- Symbol cache
-- Runtime validation
-- Memory cleanup improvements
+- Build system now copies all Go files from plugin packages
+- Package analysis now scans entire packages instead of a single source file
+- DLL symbol resolution now uses runtime caching
+- Improved workspace generation workflow
+- Improved wrapper generation pipeline
+- Improved plugin compilation reliability
+
+### Fixed
+
+- Cross-file function resolution during plugin compilation
+- Temporary workspace DLL path handling
+- Runtime DLL loading path issues
+- Wrapper generation inconsistencies
+- Exported function discovery across multiple files
+- Symbol lookup stability improvements
+
+### Security
+
+- Added plugin sandbox validation
+- Blocked dangerous imports:
+  - `os`
+  - `os/exec`
+  - `syscall`
+  - `unsafe`
+
+### Testing
+
+Added tests for:
+
+- Struct parsing
+- Struct validation
+- Sandbox validation
+- Multi-file plugin compilation
+- Symbol generation consistency
+- Runtime plugin execution
+
+### Notes
+
+Struct support in v0.2.0 includes:
+
+- Struct detection
+- Struct pointer detection
+- Compiler validation
+- Wrapper generation compatibility
+
+Struct marshalling across DLL boundaries is planned for a future release.
 
 ---
 
@@ -51,3 +88,22 @@
 ### Notes
 
 - This release improves stability for Windows plugin development workflow
+
+---
+
+## v0.1.0 - 2026-05-25
+
+### Added
+
+- Windows runtime plugin system
+- Dynamic DLL loading
+- CGO wrapper generation
+- Runtime symbol execution
+- AST function parsing
+- Automatic wrapper generation
+- Automatic MSYS2 setup
+- Automatic GCC detection
+- PATH validation
+- Temporary isolated workspaces
+- Primitive type support
+- Integration testing
