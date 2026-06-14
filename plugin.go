@@ -323,7 +323,8 @@ func (l *Loader) load(
 	)
 
 	dllPath := filepath.Join(
-		l.rootDir,
+		l.workspace,
+		"bridge",
 		artifact,
 	)
 
