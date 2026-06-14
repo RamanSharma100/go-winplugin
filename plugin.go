@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -322,8 +323,7 @@ func (l *Loader) load(
 	)
 
 	dllPath := filepath.Join(
-		l.workspace,
-		"bridge",
+		l.rootDir,
 		artifact,
 	)
 
@@ -360,96 +360,152 @@ func (l *Loader) Call(
 	artifactName string,
 	function string,
 	args ...any,
-) (uintptr, error) {
-
-	err := l.load(
-		artifactName,
-	)
-
+) (any, error) {
+	err := l.load(artifactName)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	symbol := compiler.MangleSymbol(
-		l.packageName,
-		function,
-	)
-
-	proc := l.dll.Symbol(
-		symbol,
-	)
+	symbol := compiler.MangleSymbol(l.packageName, function)
+	proc := l.dll.Symbol(symbol)
 
 	callArgs := []uintptr{}
 
 	for _, arg := range args {
 		switch v := arg.(type) {
-
 		case uintptr:
-			callArgs = append(
-				callArgs,
-				v,
-			)
+			callArgs = append(callArgs, v)
 		case int:
-			callArgs = append(
-				callArgs,
-				uintptr(v),
-			)
+			callArgs = append(callArgs, uintptr(v))
 		case bool:
 			if v {
-				callArgs = append(
-					callArgs,
-					1,
-				)
+				callArgs = append(callArgs, 1)
 			} else {
-				callArgs = append(
-					callArgs,
-					0,
-				)
+				callArgs = append(callArgs, 0)
 			}
 		case string:
-			ptr := uintptr(
-				unsafe.Pointer(
-					syscall.StringBytePtr(v),
-				),
-			)
-			callArgs = append(
-				callArgs,
-				ptr,
-			)
+			ptr := uintptr(unsafe.Pointer(syscall.StringBytePtr(v)))
+			callArgs = append(callArgs, ptr)
 		default:
-			payload, err := json.Marshal(
-				v,
-			)
+			payload, err := json.Marshal(v)
 			if err != nil {
-				return 0, err
+				return nil, err
 			}
-
-			ptr := uintptr(
-				unsafe.Pointer(
-					syscall.StringBytePtr(
-						string(payload),
-					),
-				),
-			)
-
-			callArgs = append(
-				callArgs,
-				ptr,
-			)
+			ptr := uintptr(unsafe.Pointer(syscall.StringBytePtr(string(payload))))
+			callArgs = append(callArgs, ptr)
 		}
 	}
 
-	result, _, err := executor.Call(
-		proc,
-		callArgs...,
-	)
+	result, _, err := executor.Call(proc, callArgs...)
 
-	if err != nil &&
-		err.Error() != "The operation completed successfully." {
-		return 0, err
+	if err != nil && err.Error() != "The operation completed successfully." {
+		return nil, err
 	}
 
-	return result, nil
+	if result == 0 {
+		return nil, nil
+	}
+
+	str, err := cStringToGoString(result)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read DLL return value: %w", err)
+	}
+
+	if str == "" {
+		return nil, nil
+	}
+
+	return parseEnvelope(strings.TrimSpace(str))
+}
+
+func parseEnvelope(str string) (any, error) {
+	var envelope struct {
+		Type  string          `json:"type"`
+		Value json.RawMessage `json:"value"`
+	}
+
+	if err := json.Unmarshal([]byte(str), &envelope); err != nil {
+		return str, nil
+	}
+
+	switch envelope.Type {
+
+	case "scalar":
+		var n float64
+		if err := json.Unmarshal(envelope.Value, &n); err != nil {
+			return nil, err
+		}
+		if n == float64(int64(n)) {
+			return int64(n), nil
+		}
+		return n, nil
+
+	case "string":
+		var s string
+		if err := json.Unmarshal(envelope.Value, &s); err != nil {
+			return nil, err
+		}
+		return s, nil
+
+	case "bool":
+		var b bool
+		if err := json.Unmarshal(envelope.Value, &b); err != nil {
+			return nil, err
+		}
+		return b, nil
+
+	case "error":
+		if string(envelope.Value) == "null" {
+			return nil, nil
+		}
+		var s string
+		if err := json.Unmarshal(envelope.Value, &s); err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%s", s)
+
+	case "bytes":
+		var b []byte
+		if err := json.Unmarshal(envelope.Value, &b); err != nil {
+			return nil, err
+		}
+		return b, nil
+
+	case "json":
+		var v any
+		if err := json.Unmarshal(envelope.Value, &v); err != nil {
+			return nil, err
+		}
+		return v, nil
+
+	case "multi":
+		var raw []byte
+		if err := json.Unmarshal(envelope.Value, &raw); err != nil {
+			return nil, err
+		}
+		var v map[string]any
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return nil, err
+		}
+		if errVal, ok := v["error"]; ok && errVal != nil {
+			if errStr, ok := errVal.(string); ok {
+				delete(v, "error")
+				if len(v) == 0 {
+					return nil, fmt.Errorf("%s", errStr)
+				}
+				return nil, fmt.Errorf("%s", errStr)
+			}
+		}
+		if len(v) == 1 {
+			for _, val := range v {
+				return val, nil
+			}
+		}
+		return v, nil
+
+	default:
+		return str, nil
+	}
 }
 
 func EnsureGoMod(
@@ -487,4 +543,23 @@ func EnsureGoMod(
 	}
 
 	return nil
+}
+
+func cStringToGoString(ptr uintptr) (string, error) {
+	if ptr == 0 {
+		return "", nil
+	}
+
+	const maxLen = 10 * 1024 * 1024
+
+	var buf []byte
+	for i := 0; i < maxLen; i++ {
+		b := *(*byte)(unsafe.Pointer(ptr + uintptr(i)))
+		if b == 0 {
+			return string(buf), nil
+		}
+		buf = append(buf, b)
+	}
+
+	return "", fmt.Errorf("cStringToGoString: string exceeds max length of %d bytes", maxLen)
 }

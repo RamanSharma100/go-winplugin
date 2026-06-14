@@ -6,16 +6,16 @@ import (
 )
 
 type Param struct {
-	Name string
-	Type string
+	Name        string
+	Type        string
 	isInterface bool
 }
 
 type Function struct {
-	Name       string
-	Exported   bool
-	Params     []Param
-	ReturnType string
+	Name        string
+	Exported    bool
+	Params      []Param
+	ReturnTypes []string
 }
 
 func AnalyzeFunctions(file *ast.File) []Function {
@@ -37,30 +37,38 @@ func AnalyzeFunctions(file *ast.File) []Function {
 
 				for _, nameIdent := range p.Names {
 					params = append(params, Param{
-						Name: nameIdent.Name,
-						Type: paramType,
+						Name:        nameIdent.Name,
+						Type:        paramType,
+						isInterface: paramType == "interface{}",
 					})
 				}
 
 				if len(p.Names) == 0 {
 					params = append(params, Param{
-						Name: "p" + string(rune('0'+i)),
-						Type: paramType,
+						Name:        "p" + string(rune('0'+i)),
+						Type:        paramType,
+						isInterface: paramType == "interface{}",
 					})
 				}
 			}
 		}
 
-		returnType := "void"
-		if fn.Type.Results != nil && len(fn.Type.Results.List) > 0 {
-			returnType = exprToString(fn.Type.Results.List[0].Type)
+		returnTypes := []string{}
+
+		if fn.Type.Results != nil {
+			for _, r := range fn.Type.Results.List {
+				returnTypes = append(
+					returnTypes,
+					exprToString(r.Type),
+				)
+			}
 		}
 
 		functions = append(functions, Function{
-			Name:       name,
-			Exported:   exported,
-			Params:     params,
-			ReturnType: returnType,
+			Name:        name,
+			Exported:    exported,
+			Params:      params,
+			ReturnTypes: returnTypes,
 		})
 	}
 
@@ -88,6 +96,12 @@ func exprToString(
 	e ast.Expr,
 ) string {
 	switch v := e.(type) {
+	case *ast.ArrayType:
+		return "[]" + exprToString(v.Elt)
+	case *ast.MapType:
+		return "map[" + exprToString(v.Key) + "]" + exprToString(v.Value)
+	case *ast.Ellipsis:
+		return "..." + exprToString(v.Elt)
 	case *ast.Ident:
 		return v.Name
 	case *ast.InterfaceType:

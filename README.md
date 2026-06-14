@@ -23,37 +23,33 @@ Go's official `plugin` package does not support Windows, creating major limitati
 - Plugin sandbox validation
 - Symbol caching
 - Primitive type support
-- Struct type detection
+- Struct type support
+- Interface type support
+- Multi-return value support
+- Typed envelope return system
 - Dynamic function execution
 
 ## Supported Types
 
-| Type     | Support |
-| -------- | ------- |
-| int      | Yes     |
-| string   | Yes     |
-| bool     | Yes     |
-| float    | Yes     |
-| void     | Yes     |
-| struct   | Partial |
-| \*struct | Partial |
-
-### Struct Support
-
-Version 0.2.0 introduces struct parsing and validation support.
-
-Supported:
-
-- Struct type discovery
-- Struct pointer discovery
-- Wrapper generation compatibility
-- Validation support
-
-Not yet supported:
-
-- Struct marshalling across DLL boundaries
-- Automatic struct serialization
-- Interface marshalling
+| Type            | Support |
+| --------------- | ------- |
+| int             | Yes     |
+| int32           | Yes     |
+| int64           | Yes     |
+| uint64          | Yes     |
+| float32         | Yes     |
+| float64         | Yes     |
+| string          | Yes     |
+| bool            | Yes     |
+| void            | Yes     |
+| error           | Yes     |
+| []byte          | Yes     |
+| struct          | Yes     |
+| \*struct        | Yes     |
+| interface{}     | Yes     |
+| []interface{}   | Yes     |
+| map[string]any  | Yes     |
+| multiple return | Yes     |
 
 ## How It Works
 
@@ -79,6 +75,8 @@ Windows DLL Loader
 Symbol Cache
     ↓
 Runtime Symbol Execution
+    ↓
+Typed Envelope Decoder
 ```
 
 ## Installation
@@ -95,7 +93,7 @@ go get github.com/RamanSharma100/go-winplugin
 package example
 
 func Execute(a int, b int) int {
-	return a + b
+    return a + b
 }
 ```
 
@@ -105,43 +103,147 @@ func Execute(a int, b int) int {
 package main
 
 import (
-	"fmt"
+    "fmt"
 
-	winplugin "github.com/RamanSharma100/go-winplugin"
+    winplugin "github.com/RamanSharma100/go-winplugin"
 )
 
 func main() {
-	loader, err := winplugin.NewLoader("./example")
+    loader, err := winplugin.NewLoader("./example")
+    if err != nil {
+        panic(err)
+    }
 
-	if err != nil {
-		panic(err)
-	}
+    err = loader.Build("plugin.go")
+    if err != nil {
+        panic(err)
+    }
 
-	err = loader.Build("plugin.go")
+    result, err := loader.Call("example", "Execute", uintptr(10), uintptr(20))
+    if err != nil {
+        panic(err)
+    }
 
-	if err != nil {
-		panic(err)
-	}
-
-	result, err := loader.Call(
-		"example",
-		"Execute",
-		uintptr(10),
-		uintptr(20),
-	)
-
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(result)
+    fmt.Println(result) // 30
 }
 ```
 
-Output:
+## Supported Scenarios
 
-```text
-30
+### Primitive Types
+
+```go
+// int
+func Execute(a, b int) int { return a + b }
+
+// string
+func Version() string { return "1.0.0" }
+
+// bool
+func IsPositive(n int) bool { return n > 0 }
+
+// float64
+func Divide(a, b float64) float64 { return a / b }
+
+// void
+func Logger(message string) { fmt.Println(message) }
+
+// []byte
+func ReadData() []byte { return []byte("hello") }
+
+// error only
+func Validate(name string) error {
+    if name == "" {
+        return errors.New("name cannot be empty")
+    }
+    return nil
+}
+```
+
+### Interface Parameters
+
+```go
+// interface{} accepts map, string, number, bool, slice, nil
+func ProcessData(data interface{}) {
+    fmt.Println(data)
+}
+```
+
+```go
+// map
+loader.Call("example", "ProcessData", map[string]any{"key": "value"})
+
+// string
+loader.Call("example", "ProcessData", "hello")
+
+// number
+loader.Call("example", "ProcessData", 42)
+
+// bool
+loader.Call("example", "ProcessData", true)
+
+// slice
+loader.Call("example", "ProcessData", []any{1, "two", true})
+
+// nil
+loader.Call("example", "ProcessData", nil)
+```
+
+### Struct Parameters
+
+```go
+type User struct {
+    Name string
+    Age  int
+}
+
+func ProcessUser(user *User) {
+    fmt.Println(user.Name, user.Age)
+}
+```
+
+```go
+loader.Call("example", "ProcessUser", map[string]any{
+    "Name": "John",
+    "Age":  30,
+})
+```
+
+### Multiple Return Values
+
+```go
+func CreateUser(name string, age int) (*User, error) {
+    return &User{Name: name, Age: age}, nil
+}
+```
+
+```go
+result, err := loader.Call("example", "CreateUser", "Jane", 25)
+if err != nil {
+    panic(err)
+}
+
+user := result.(map[string]any)
+fmt.Println(user["Name"]) // Jane
+fmt.Println(user["Age"])  // 25
+```
+
+### Error Propagation
+
+```go
+func CreateUserWithError(name string, age int) (*User, error) {
+    if age < 0 {
+        return nil, errors.New("age cannot be negative")
+    }
+    return &User{Name: name, Age: age}, nil
+}
+```
+
+```go
+result, err := loader.Call("example", "CreateUserWithError", "Bad", -1)
+if err != nil {
+    fmt.Println(err) // age cannot be negative
+}
 ```
 
 ## Multi-File Plugin Example
@@ -152,21 +254,41 @@ plugin.go
 package example
 
 func Execute(a, b int) int {
-	return AddInternal(a, b)
+    return AddInternal(a, b)
 }
 ```
 
-testing.go
+internal.go
 
 ```go
 package example
 
 func AddInternal(a, b int) int {
-	return a + b
+    return a + b
 }
 ```
 
 The loader automatically analyzes all Go files within the package.
+
+## Return Value System
+
+v0.3.0 introduces a typed envelope system for all return values. Every DLL return is wrapped as:
+
+```json
+{ "type": "scalar|string|bool|error|bytes|json|multi", "value": <data> }
+```
+
+This eliminates all pointer/scalar ambiguity and makes return value decoding fully deterministic regardless of value size.
+
+| Envelope Type | Go Types                                    |
+| ------------- | ------------------------------------------- |
+| scalar        | int, int32, int64, uint64, float32, float64 |
+| string        | string                                      |
+| bool          | bool                                        |
+| error         | error                                       |
+| bytes         | []byte                                      |
+| json          | struct, \*struct, map, interface            |
+| multi         | any function with 2+ returns                |
 
 ## Build Process
 
@@ -180,7 +302,8 @@ The library automatically handles:
 6. DLL compilation
 7. Dynamic DLL loading
 8. Symbol caching
-9. Runtime function execution
+9. Typed envelope decoding
+10. Runtime function execution
 
 ## Environment Setup
 
@@ -195,9 +318,7 @@ The library automatically:
 
 ## Security
 
-Version 0.2.0 introduces basic sandbox validation.
-
-Blocked imports:
+Sandbox validation blocks plugins from importing:
 
 - os
 - os/exec
@@ -208,25 +329,25 @@ Plugins using blocked imports will fail validation before compilation.
 
 ## Known Limitations
 
-- Interface support not implemented
+- Windows-only (Linux/macOS not supported)
 - String memory cleanup pending
-- Windows-first implementation
-- Requires CGO enabled environment
 - No hot reload support
+- Requires CGO-enabled environment (GCC via MSYS2)
 
 ## Roadmap
-
-### v0.3.0
-
-- Interface support
-- Runtime type validation
-- Plugin sandboxing improvements
 
 ### v0.4.0
 
 - Hot reload support
 - Symbol cache enhancements
 - Cross-platform runtime loaders
+- Plugin versioning
+
+### v0.5.0
+
+- Async plugin execution
+- Plugin isolation improvements
+- Performance benchmarks
 
 ## Testing
 
@@ -234,7 +355,7 @@ Plugins using blocked imports will fail validation before compilation.
 go test ./...
 ```
 
-Current test coverage includes:
+Test coverage includes:
 
 - Symbol mangling
 - Function analysis
@@ -243,14 +364,48 @@ Current test coverage includes:
 - Wrapper generation
 - Sandbox validation
 - Struct parsing
-- Multi-file plugins
+- Interface marshaling
+- Multi-return value parsing
+- Envelope type verification
 - DLL compilation
 - DLL execution
+- Edge cases: zero values, negative numbers, large integers, empty strings, nil interfaces
+
+## Changelog
+
+### v0.3.0
+
+- Interface parameter support (`interface{}`, `[]interface{}`, `map[string]any`)
+- Interface marshaling via JSON across DLL boundary
+- Multi-return value support with full error propagation
+- Typed envelope return system — eliminates pointer/scalar ambiguity
+- `[]byte` return type support
+- `error`-only return type support
+- Struct and `*struct` parameter marshaling via JSON
+- Fixed CGO preprocessor crash on multi-return functions (inline IIFE in generated code)
+- `Call` return type changed from `uintptr` to `any`
+- Expanded compiler test suite with envelope and interface coverage
+- Expanded integration test suite with all type edge cases
+
+### v0.2.0
+
+- Struct type discovery
+- Struct pointer discovery
+- Wrapper generation compatibility
+- Sandbox validation
+
+### v0.1.0
+
+- Initial release
+- Windows runtime plugin support
+- Dynamic DLL generation
+- CGO bridge generation
+- Primitive type support
 
 ## Documentation
 
-- Contributing Guide
-- Changelog
+- [Contributing Guide](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
 
 ## License
 
@@ -260,5 +415,4 @@ MIT
 
 Raman Sharma
 
-GitHub:
-https://github.com/RamanSharma100
+GitHub: https://github.com/RamanSharma100

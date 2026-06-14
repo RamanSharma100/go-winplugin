@@ -1,6 +1,36 @@
 # Changelog
 
-## v0.2.0 - 2026-06-02
+All notable changes to go-winplugin are documented here.
+
+## [v0.3.0] - 2026-06-14
+
+### Added
+
+- Interface parameter support — `interface{}`, `[]interface{}`, `map[string]any` can now be passed to plugin functions and are marshaled via JSON across the DLL boundary
+- Multi-return value support — functions returning multiple values (e.g. `(*User, error)`) are fully supported; values are returned as `map[string]any` and errors are propagated as Go `error` values
+- Typed envelope return system — every DLL return is now wrapped in a typed envelope `{"type": "...", "value": ...}` eliminating all pointer/scalar ambiguity that existed in v0.2.0
+- `[]byte` return type support
+- `error`-only return type support with nil/non-nil propagation
+- Struct and `*struct` parameter marshaling via JSON
+- `CreateUserWithError`, `IsPositive`, `Divide`, `ReadData`, `Validate` added to example plugin covering all new type scenarios
+- Expanded compiler test suite — envelope wrapping verified for all types, multi-return AST parsing, interface marshaling codegen, slice/map parameter parsing
+- Expanded integration test suite — zero values, negative numbers, large integers, empty strings, nil interfaces, bool true/false, float64 fractional, void nil return, struct pointer param, multi-return with and without error
+
+### Fixed
+
+- CGO preprocessor crash (`expected ';', found 'return'`) on multi-return functions caused by inline anonymous functions (IIFEs) in generated wrapper code — replaced with hoisted variables
+- `Call` return type changed from `uintptr` to `any` — raw pointer values are no longer returned to callers
+- Multi-return error detection no longer requires the error to be the only key in the response map
+
+### Changed
+
+- `buildReturnBridge` now emits typed envelopes for all return types instead of raw C scalars or untyped JSON
+- `Call` now reads all results as C strings and decodes via `parseEnvelope` — the `0xFFFF` pointer threshold heuristic is removed
+- `looksLikeError` heuristic removed — error detection is now fully deterministic via envelope type field
+
+---
+
+## [v0.2.0] - 2026-06-02
 
 ### Added
 
@@ -66,7 +96,7 @@ Struct marshalling across DLL boundaries is planned for a future release.
 
 ---
 
-## v0.1.1 - 2026-05-26
+## [v0.1.1] - 2026-05-26
 
 ### Added
 
