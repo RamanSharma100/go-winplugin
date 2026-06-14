@@ -8,6 +8,7 @@ import (
 type Param struct {
 	Name string
 	Type string
+	isInterface bool
 }
 
 type Function struct {
@@ -27,7 +28,6 @@ func AnalyzeFunctions(file *ast.File) []Function {
 		}
 
 		name := fn.Name.Name
-
 		exported := unicode.IsUpper(rune(name[0]))
 
 		var params []Param
@@ -90,6 +90,8 @@ func exprToString(
 	switch v := e.(type) {
 	case *ast.Ident:
 		return v.Name
+	case *ast.InterfaceType:
+		return "interface{}"
 	case *ast.StarExpr:
 		return "*" + exprToString(
 			v.X,

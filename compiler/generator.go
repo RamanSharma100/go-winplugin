@@ -8,14 +8,12 @@ func GenerateWrapper(
 	importPath string,
 	functions []Function,
 ) string {
-
 	var sb strings.Builder
 
 	sb.WriteString("package main\n\n")
-
 	sb.WriteString("import \"C\"\n\n")
-
 	sb.WriteString("import (\n")
+	sb.WriteString("\t\"encoding/json\"\n")
 	sb.WriteString("\t")
 	sb.WriteString(importAlias)
 	sb.WriteString(" \"")
@@ -24,7 +22,6 @@ func GenerateWrapper(
 	sb.WriteString(")\n\n")
 
 	for _, fn := range functions {
-
 		if !fn.Exported {
 			continue
 		}
@@ -34,22 +31,30 @@ func GenerateWrapper(
 			fn.Name,
 		)
 
-		cParams, goArgs, pre, post, retType :=
-			buildCBridge(fn)
-
-		sb.WriteString(
-			"//export " + exportName + "\n",
+		cParams,
+			goArgs,
+			pre,
+			post,
+			retType := buildCBridge(
+			fn,
+			importAlias,
 		)
 
-		sb.WriteString(
-			"func " +
-				exportName +
-				"(" +
-				cParams +
-				") " +
-				retType +
-				" {\n",
-		)
+		sb.WriteString("//export ")
+		sb.WriteString(exportName)
+		sb.WriteString("\n")
+
+		sb.WriteString("func ")
+		sb.WriteString(exportName)
+		sb.WriteString("(")
+		sb.WriteString(cParams)
+		sb.WriteString(") ")
+
+		if retType != "" {
+			sb.WriteString(retType)
+		}
+
+		sb.WriteString(" {\n")
 
 		if pre != "" {
 			sb.WriteString(pre)
@@ -64,7 +69,6 @@ func GenerateWrapper(
 				")"
 
 		if len(fn.Params) == 0 {
-
 			call =
 				importAlias +
 					"." +
@@ -73,18 +77,13 @@ func GenerateWrapper(
 		}
 
 		if retType == "" {
-
-			sb.WriteString(
-				"\t" + call + "\n",
-			)
-
+			sb.WriteString("\t")
+			sb.WriteString(call)
+			sb.WriteString("\n")
 		} else {
-
-			sb.WriteString(
-				"\tresult := " +
-					call +
-					"\n",
-			)
+			sb.WriteString("\tresult := ")
+			sb.WriteString(call)
+			sb.WriteString("\n")
 		}
 
 		if post != "" {
@@ -101,6 +100,7 @@ func GenerateWrapper(
 
 func buildCBridge(
 	fn Function,
+	importAlias string,
 ) (
 	string,
 	string,
@@ -108,7 +108,6 @@ func buildCBridge(
 	string,
 	string,
 ) {
-
 	var cParams []string
 	var goArgs []string
 
@@ -119,18 +118,12 @@ func buildCBridge(
 
 	for i, p := range fn.Params {
 
-		cName :=
-			"p" +
-				string(
-					rune('0'+i),
-				)
-
+		cName := "p" + string(rune('0'+i))
 		goName := p.Name
 
 		switch p.Type {
 
 		case "int":
-
 			cParams = append(
 				cParams,
 				cName+" C.int",
@@ -142,7 +135,6 @@ func buildCBridge(
 			)
 
 		case "string":
-
 			cParams = append(
 				cParams,
 				cName+" *C.char",
@@ -161,8 +153,7 @@ func buildCBridge(
 				goName,
 			)
 
-		case "float":
-
+		case "float64":
 			cParams = append(
 				cParams,
 				cName+" C.double",
@@ -174,7 +165,6 @@ func buildCBridge(
 			)
 
 		case "bool":
-
 			cParams = append(
 				cParams,
 				cName+" C.int",
@@ -188,52 +178,132 @@ func buildCBridge(
 		default:
 			cParams = append(
 				cParams,
-				cName+" uintptr",
+				cName+" *C.char",
 			)
 
-			goArgs = append(
-				goArgs,
-				"nil",
-			)
+			if strings.HasPrefix(
+				p.Type,
+				"*",
+			) {
+
+				targetType :=
+					strings.TrimPrefix(
+						p.Type,
+						"*",
+					)
+
+				if !strings.Contains(
+					targetType,
+					".",
+				) {
+					targetType =
+						importAlias +
+							"." +
+							targetType
+				}
+
+				pre.WriteString(
+					"\t" +
+						goName +
+						" := &" +
+						targetType +
+						"{}\n",
+				)
+
+				pre.WriteString(
+					"\tjson.Unmarshal([]byte(C.GoString(" +
+						cName +
+						")), " +
+						goName +
+						")\n",
+				)
+
+				goArgs = append(
+					goArgs,
+					goName,
+				)
+
+			} else {
+
+				targetType := p.Type
+
+				if !strings.Contains(
+					targetType,
+					".",
+				) &&
+					targetType != "interface{}" &&
+					targetType != "map" &&
+					targetType != "[]byte" {
+
+					targetType =
+						importAlias +
+							"." +
+							targetType
+				}
+
+				pre.WriteString(
+					"\tvar " +
+						goName +
+						" " +
+						targetType +
+						"\n",
+				)
+
+				pre.WriteString(
+					"\tjson.Unmarshal([]byte(C.GoString(" +
+						cName +
+						")), &" +
+						goName +
+						")\n",
+				)
+
+				goArgs = append(
+					goArgs,
+					goName,
+				)
+			}
 		}
 	}
 
 	switch fn.ReturnType {
 
 	case "int":
-
 		retType = "C.int"
-
 		post.WriteString(
 			"\treturn C.int(result)\n",
 		)
 
 	case "string":
-
 		retType = "*C.char"
-
 		post.WriteString(
 			"\treturn C.CString(result)\n",
 		)
 
-	case "float":
-
+	case "float64":
 		retType = "C.double"
-
 		post.WriteString(
 			"\treturn C.double(result)\n",
 		)
 
 	case "bool":
-
 		retType = "C.int"
-
 		post.WriteString(
-			"\tif result { return 1 } else { return 0 }\n",
+			"\tif result { return 1 }\n\treturn 0\n",
 		)
 
 	case "void", "":
 		retType = ""
+
+	default:
+		retType = "*C.char"
+
+		post.WriteString(
+			"\tpayload, _ := json.Marshal(result)\n",
+		)
+
+		post.WriteString(
+			"\treturn C.CString(string(payload))\n",
+		)
 	}
 
 	return strings.Join(cParams, ", "),

@@ -1,11 +1,14 @@
 package winplugin
 
 import (
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
+	"unsafe"
 
 	"github.com/RamanSharma100/go-winplugin/builder"
 	"github.com/RamanSharma100/go-winplugin/compiler"
@@ -87,6 +90,14 @@ func (l *Loader) Build(
 	functions := compiler.AnalyzePackageFunctions(
 		parsedPackage,
 	)
+
+	err = compiler.ValidateSandbox(
+		parsedPackage,
+	)
+
+	if err != nil {
+		return err
+	}
 
 	for _, file := range parsedPackage.Files {
 		err = sandbox.ValidateSandbox(file)
@@ -348,8 +359,9 @@ func (l *Loader) load(
 func (l *Loader) Call(
 	artifactName string,
 	function string,
-	args ...uintptr,
+	args ...any,
 ) (uintptr, error) {
+
 	err := l.load(
 		artifactName,
 	)
@@ -367,9 +379,69 @@ func (l *Loader) Call(
 		symbol,
 	)
 
+	callArgs := []uintptr{}
+
+	for _, arg := range args {
+		switch v := arg.(type) {
+
+		case uintptr:
+			callArgs = append(
+				callArgs,
+				v,
+			)
+		case int:
+			callArgs = append(
+				callArgs,
+				uintptr(v),
+			)
+		case bool:
+			if v {
+				callArgs = append(
+					callArgs,
+					1,
+				)
+			} else {
+				callArgs = append(
+					callArgs,
+					0,
+				)
+			}
+		case string:
+			ptr := uintptr(
+				unsafe.Pointer(
+					syscall.StringBytePtr(v),
+				),
+			)
+			callArgs = append(
+				callArgs,
+				ptr,
+			)
+		default:
+			payload, err := json.Marshal(
+				v,
+			)
+			if err != nil {
+				return 0, err
+			}
+
+			ptr := uintptr(
+				unsafe.Pointer(
+					syscall.StringBytePtr(
+						string(payload),
+					),
+				),
+			)
+
+			callArgs = append(
+				callArgs,
+				ptr,
+			)
+		}
+	}
+
 	result, _, err := executor.Call(
 		proc,
-		args...,
+		callArgs...,
 	)
 
 	if err != nil &&

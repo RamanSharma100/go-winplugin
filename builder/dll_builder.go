@@ -43,9 +43,16 @@ func BuildDLL(
 		cmd,
 	)
 
-	_, err := cmd.CombinedOutput()
+	out, err := cmd.CombinedOutput()
+
+	fmt.Println(string(out))
+
 	if err != nil {
-		return err
+		return fmt.Errorf(
+			"build failed: %w\n%s",
+			err,
+			string(out),
+		)
 	}
 
 	fmt.Println("DLL built successfully at:", output)

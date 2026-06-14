@@ -28,3 +28,9 @@ func ProcessUser(
 		user.Age,
 	)
 }
+
+func ProcessData(
+	data interface{},
+) {
+	fmt.Println(data)
+}

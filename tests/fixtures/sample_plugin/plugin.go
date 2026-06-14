@@ -1,6 +1,8 @@
 package example
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type User struct {
 	Name string
@@ -27,4 +29,10 @@ func ProcessUser(
 		user.Name,
 		user.Age,
 	)
+}
+
+func ProcessData(
+	data interface{},
+) {
+	fmt.Println(data)
 }

@@ -1,13 +1,13 @@
 package tests
 
 import (
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"strings"
 	"testing"
 
 	"github.com/RamanSharma100/go-winplugin/compiler"
-	"github.com/RamanSharma100/go-winplugin/sandbox"
 )
 
 func TestMangleSymbol(
@@ -270,9 +270,9 @@ func TestSandboxValidation(
 	t *testing.T,
 ) {
 	source := `
-package example
+package plugin
 
-import "os"
+import "os/exec"
 
 func Execute() {}
 `
@@ -285,18 +285,21 @@ func Execute() {}
 		source,
 		parser.ParseComments,
 	)
-
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = sandbox.ValidateSandbox(
-		file,
-	)
+	pkg := &ast.Package{
+		Name:  "plugin",
+		Files: map[string]*ast.File{"plugin.go": file},
+	}
 
+	err = compiler.ValidateSandbox(
+		pkg,
+	)
 	if err == nil {
 		t.Fatal(
-			"expected sandbox violation",
+			"expected sandbox validation failure",
 		)
 	}
 }
@@ -390,6 +393,38 @@ func TestMangleSymbolConsistency(
 	if first != second {
 		t.Fatal(
 			"symbol generation not deterministic",
+		)
+	}
+}
+
+func TestInterfaceParsing(
+	t *testing.T,
+) {
+	source := `
+package plugin
+
+func Execute(v interface{}) {}
+`
+
+	set := token.NewFileSet()
+
+	file, err := parser.ParseFile(
+		set,
+		"plugin.go",
+		source,
+		parser.ParseComments,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	functions := compiler.AnalyzeFunctions(
+		file,
+	)
+	if functions[0].Params[0].Type != "interface{}" {
+		t.Fatalf(
+			"expected interface{} got %s",
+			functions[0].Params[0].Type,
 		)
 	}
 }

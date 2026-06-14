@@ -34,5 +34,19 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Println("Output:", output)
+	fmt.Println("Output1 :", output)
+
+	output, err = pluginLoader.Call(
+		"example",
+		"ProcessData",
+		map[string]any{
+			"message": "Hello, World!",
+		},
+	)
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+
+	fmt.Println("Output2 :", output)
 }
