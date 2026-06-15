@@ -6,17 +6,22 @@ import (
 	winplugin "github.com/RamanSharma100/go-winplugin"
 )
 
-func TestPluginExecution(t *testing.T) {
+func newLoader(t *testing.T) *winplugin.Loader {
+	t.Helper()
 	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if err = loader.Build("plugin.go"); err != nil {
 		t.Fatal(err)
 	}
+	return loader
+}
 
-	result, err := loader.Call("sample_plugin", "Execute", uintptr(10), uintptr(20))
+func TestPluginExecution(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "Execute", 10, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,26 +41,13 @@ func TestPluginExecution(t *testing.T) {
 }
 
 func TestMultiFilePluginBuild(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
-	}
+	newLoader(t)
 }
 
 func TestIntReturnValue(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
-	}
+	loader := newLoader(t)
 
-	result, err := loader.Call("sample_plugin", "Execute", uintptr(5), uintptr(7))
+	result, err := loader.Call("sample_plugin", "Execute", 5, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,14 +61,59 @@ func TestIntReturnValue(t *testing.T) {
 	}
 }
 
-func TestStringReturnValue(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
+func TestZeroIntReturn(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "Execute", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = loader.Build("plugin.go"); err != nil {
+
+	val, ok := result.(int64)
+	if !ok {
+		t.Fatalf("expected int64 got %T: %v", result, result)
+	}
+	if val != 0 {
+		t.Fatalf("expected 0 got %d", val)
+	}
+}
+
+func TestNegativeIntReturn(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "Execute", -5, 3)
+	if err != nil {
 		t.Fatal(err)
 	}
+
+	val, ok := result.(int64)
+	if !ok {
+		t.Fatalf("expected int64 got %T: %v", result, result)
+	}
+	if val != -2 {
+		t.Fatalf("expected -2 got %d", val)
+	}
+}
+
+func TestLargeIntValue(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "Execute", 1000000, 2000000)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	val, ok := result.(int64)
+	if !ok {
+		t.Fatalf("expected int64 got %T: %v", result, result)
+	}
+	if val != 3000000 {
+		t.Fatalf("expected 3000000 got %d", val)
+	}
+}
+
+func TestStringReturnValue(t *testing.T) {
+	loader := newLoader(t)
 
 	result, err := loader.Call("sample_plugin", "Version")
 	if err != nil {
@@ -93,13 +130,7 @@ func TestStringReturnValue(t *testing.T) {
 }
 
 func TestVoidFunction(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
-	}
+	loader := newLoader(t)
 
 	result, err := loader.Call("sample_plugin", "Logger", "hello test")
 	if err != nil {
@@ -110,14 +141,20 @@ func TestVoidFunction(t *testing.T) {
 	}
 }
 
-func TestInterfaceParameter(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
+func TestVoidFunctionEmptyString(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "Logger", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
+	if result != nil {
+		t.Fatalf("expected nil got %v", result)
 	}
+}
+
+func TestInterfaceParameterMap(t *testing.T) {
+	loader := newLoader(t)
 
 	result, err := loader.Call("sample_plugin", "ProcessData", map[string]any{
 		"message": "Hello, World!",
@@ -129,13 +166,7 @@ func TestInterfaceParameter(t *testing.T) {
 }
 
 func TestInterfaceParameterString(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
-	}
+	loader := newLoader(t)
 
 	result, err := loader.Call("sample_plugin", "ProcessData", "plain string value")
 	if err != nil {
@@ -145,13 +176,7 @@ func TestInterfaceParameterString(t *testing.T) {
 }
 
 func TestInterfaceParameterNumber(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
-	}
+	loader := newLoader(t)
 
 	result, err := loader.Call("sample_plugin", "ProcessData", 42)
 	if err != nil {
@@ -160,14 +185,18 @@ func TestInterfaceParameterNumber(t *testing.T) {
 	_ = result
 }
 
-func TestInterfaceParameterSlice(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
+func TestInterfaceParameterBool(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "ProcessData", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
-	}
+	_ = result
+}
+
+func TestInterfaceParameterSlice(t *testing.T) {
+	loader := newLoader(t)
 
 	result, err := loader.Call("sample_plugin", "ProcessData", []any{1, "two", true})
 	if err != nil {
@@ -176,14 +205,101 @@ func TestInterfaceParameterSlice(t *testing.T) {
 	_ = result
 }
 
-func TestMultipleReturnValues(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
+func TestInterfaceParameterNil(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "ProcessData", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = loader.Build("plugin.go"); err != nil {
+	_ = result
+}
+
+func TestStructParameter(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "ProcessUser", map[string]any{
+		"Name": "John",
+		"Age":  30,
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
+	if result != nil {
+		t.Fatalf("expected nil result for void function got %v", result)
+	}
+}
+
+func TestBoolReturnTrue(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "IsPositive", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	val, ok := result.(bool)
+	if !ok {
+		t.Fatalf("expected bool got %T: %v", result, result)
+	}
+	if !val {
+		t.Fatal("expected true got false")
+	}
+}
+
+func TestBoolReturnFalse(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "IsPositive", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	val, ok := result.(bool)
+	if !ok {
+		t.Fatalf("expected bool got %T: %v", result, result)
+	}
+	if val {
+		t.Fatal("expected false got true")
+	}
+}
+
+func TestFloat64Return(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "Divide", 7.0, 2.0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	val, ok := result.(float64)
+	if !ok {
+		t.Fatalf("expected float64 got %T: %v", result, result)
+	}
+	if val != 3.5 {
+		t.Fatalf("expected 3.5 got %f", val)
+	}
+}
+
+func TestFloat64DivideByZero(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "Divide", 10.0, 0.0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	val, ok := result.(int64)
+	if !ok {
+		t.Fatalf("expected int64 (0) got %T: %v", result, result)
+	}
+	if val != 0 {
+		t.Fatalf("expected 0 got %v", val)
+	}
+}
+
+func TestMultipleReturnValues(t *testing.T) {
+	loader := newLoader(t)
 
 	result, err := loader.Call("sample_plugin", "CreateUser", "Jane Doe", 25)
 	if err != nil {
@@ -206,165 +322,8 @@ func TestMultipleReturnValues(t *testing.T) {
 	}
 }
 
-func TestMultipleReturnValuesWithError(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
-	}
-
-	result, err := loader.Call("sample_plugin", "CreateUserWithError", "Bad", -1)
-	if err == nil {
-		t.Fatalf("expected error got result: %v", result)
-	}
-}
-
-func TestStructParameter(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
-	}
-
-	result, err := loader.Call("sample_plugin", "ProcessUser", map[string]any{
-		"Name": "John",
-		"Age":  30,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result != nil {
-		t.Fatalf("expected nil result for void function got %v", result)
-	}
-}
-
-func TestZeroIntReturn(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
-	}
-
-	result, err := loader.Call("sample_plugin", "Execute", uintptr(0), uintptr(0))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	val, ok := result.(int64)
-	if !ok {
-		t.Fatalf("expected int64 got %T: %v", result, result)
-	}
-	if val != 0 {
-		t.Fatalf("expected 0 got %d", val)
-	}
-}
-
-func TestNegativeIntReturn(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
-	}
-
-	result, err := loader.Call("sample_plugin", "Execute", uintptr(5), uintptr(3))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	val, ok := result.(int64)
-	if !ok {
-		t.Fatalf("expected int64 got %T: %v", result, result)
-	}
-	if val != 2 {
-		t.Fatalf("expected 2 got %d", val)
-	}
-}
-
-func TestBoolReturnTrue(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
-	}
-
-	result, err := loader.Call("sample_plugin", "IsPositive", uintptr(5))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	val, ok := result.(bool)
-	if !ok {
-		t.Fatalf("expected bool got %T: %v", result, result)
-	}
-	if !val {
-		t.Fatal("expected true got false")
-	}
-}
-
-func TestBoolReturnFalse(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
-	}
-
-	result, err := loader.Call("sample_plugin", "IsPositive", uintptr(0))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	val, ok := result.(bool)
-	if !ok {
-		t.Fatalf("expected bool got %T: %v", result, result)
-	}
-	if val {
-		t.Fatal("expected false got true")
-	}
-}
-
-func TestFloat64Return(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
-	}
-
-	result, err := loader.Call("sample_plugin", "Divide", 7.0, 2.0)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	val, ok := result.(float64)
-	if !ok {
-		t.Fatalf("expected float64 got %T: %v", result, result)
-	}
-	if val != 3.5 {
-		t.Fatalf("expected 3.5 got %f", val)
-	}
-}
-
-func TestEmptyStringParameter(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
-	}
+func TestMultipleReturnValuesEmptyName(t *testing.T) {
+	loader := newLoader(t)
 
 	result, err := loader.Call("sample_plugin", "CreateUser", "", 0)
 	if err != nil {
@@ -380,25 +339,72 @@ func TestEmptyStringParameter(t *testing.T) {
 	}
 }
 
-func TestLargeIntValue(t *testing.T) {
-	loader, err := winplugin.NewLoader("./fixtures/sample_plugin")
+func TestMultipleReturnValuesWithError(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "CreateUserWithError", "Bad", -1)
+	if err == nil {
+		t.Fatalf("expected error got result: %v", result)
+	}
+	if err.Error() != "age cannot be negative" {
+		t.Fatalf("unexpected error message: %s", err.Error())
+	}
+}
+
+func TestMultipleReturnValuesWithoutError(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "CreateUserWithError", "Alice", 30)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = loader.Build("plugin.go"); err != nil {
-		t.Fatal(err)
-	}
 
-	result, err := loader.Call("sample_plugin", "Execute", uintptr(1000000), uintptr(2000000))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	val, ok := result.(int64)
+	user, ok := result.(map[string]any)
 	if !ok {
-		t.Fatalf("expected int64 got %T: %v", result, result)
+		t.Fatalf("expected map got %T: %v", result, result)
 	}
-	if val != 3000000 {
-		t.Fatalf("expected 3000000 got %d", val)
+	if user["Name"] != "Alice" {
+		t.Fatalf("expected Name=Alice got %v", user["Name"])
+	}
+}
+
+func TestErrorOnlyReturnNil(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "Validate", "Jane")
+	if err != nil {
+		t.Fatalf("expected nil error got: %v", err)
+	}
+	if result != nil {
+		t.Fatalf("expected nil result got %v", result)
+	}
+}
+
+func TestErrorOnlyReturnNonNil(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "Validate", "")
+	if err == nil {
+		t.Fatalf("expected error got result: %v", result)
+	}
+	if err.Error() != "name cannot be empty" {
+		t.Fatalf("unexpected error message: %s", err.Error())
+	}
+}
+
+func TestBytesReturn(t *testing.T) {
+	loader := newLoader(t)
+
+	result, err := loader.Call("sample_plugin", "ReadData")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	val, ok := result.([]byte)
+	if !ok {
+		t.Fatalf("expected []byte got %T: %v", result, result)
+	}
+	if len(val) == 0 {
+		t.Fatal("expected non-empty bytes")
 	}
 }
