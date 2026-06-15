@@ -269,10 +269,6 @@ func (l *Loader) Call(
 		return nil, err
 	}
 
-	if result == 0 {
-		return nil, nil
-	}
-
 	str, err := cStringToGoString(result)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read DLL return value: %w", err)
